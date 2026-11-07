@@ -607,14 +607,113 @@ export function createDioramaAtlases(
   pCtx.arc(860, 384, 62, 0, Math.PI * 2);
   pCtx.fill();
 
-  // Row 2 & 3 of Props Atlas: Tree bark, Stone shrines/foxes, Beer crates, Chibi characters
-  paintHandbrushedBase(pCtx, 0, 512, 256, 256, '#78350F', '#451A03', 0.4); // Bark
-  paintHandbrushedBase(pCtx, 256, 512, 256, 256, '#CBD5E1', '#64748B', 0.35); // Stone Kitsune & Tori Base
-  paintHandbrushedBase(pCtx, 512, 512, 256, 256, '#FACC15', '#CA8A04', 0.3); // Plastic Izakaya Crates
-  paintHandbrushedBase(pCtx, 768, 512, 256, 256, '#F472B6', '#6366F1', 0.2); // Kawaii Chibi Characters
-  paintHandbrushedBase(pCtx, 0, 768, 1024, 256, '#FFF7ED', '#FED7AA', 0.15); // Steam, Clouds & Streetlamp Globes
-  pEmCtx.fillStyle = '#FEF08A';
-  pEmCtx.fillRect(0, 768, 256, 256);
+  // Row 2 & 3 of Props Atlas: Tree bark, Stone shrines/foxes, Beer crates, Anime Characters & Pets
+  paintHandbrushedBase(pCtx, 0, 512, 256, 256, '#78350F', '#451A03', 0.4); // (0,2) Bark
+  paintHandbrushedBase(pCtx, 256, 512, 256, 256, '#CBD5E1', '#64748B', 0.35); // (1,2) Stone Kitsune & Torii Base
+  paintHandbrushedBase(pCtx, 512, 512, 256, 256, '#FACC15', '#CA8A04', 0.3); // (2,2) Plastic Izakaya Crates
+
+  // (3,2) Anime Swordsman Checkered Haori (Emerald Green & Charcoal Black Ichimatsu + White Belt)
+  {
+    const cx = 768;
+    const cy = 512;
+    const sq = 32;
+    for (let r = 0; r < 6; r++) {
+      for (let c = 0; c < 8; c++) {
+        pCtx.fillStyle = (r + c) % 2 === 0 ? '#10B981' : '#0F172A';
+        pCtx.fillRect(cx + c * sq, cy + r * sq, sq, sq);
+        pEmCtx.fillStyle = (r + c) % 2 === 0 ? '#064E3B' : '#020617';
+        pEmCtx.fillRect(cx + c * sq, cy + r * sq, sq, sq);
+      }
+    }
+    // White kimono collar & belt band + dark hakama hem
+    pCtx.fillStyle = '#F8FAFC';
+    pCtx.fillRect(cx, cy + 184, 256, 18);
+    pCtx.fillStyle = '#1E1B4B';
+    pCtx.fillRect(cx, cy + 202, 256, 54);
+  }
+
+  // (0,3) Warm Peach Cream Anime Face / Skin with Rosy Blush Cheeks (clean without dark bottom AO)
+  {
+    const fGrad = pCtx.createLinearGradient(0, 768, 0, 1024);
+    fGrad.addColorStop(0, '#FFF5EB');
+    fGrad.addColorStop(1, '#FED7AA');
+    pCtx.fillStyle = fGrad;
+    pCtx.fillRect(0, 768, 256, 256);
+    pCtx.fillStyle = 'rgba(251, 113, 133, 0.55)';
+    pCtx.beginPath();
+    pCtx.arc(72, 900, 24, 0, Math.PI * 2);
+    pCtx.arc(184, 900, 24, 0, Math.PI * 2);
+    pCtx.fill();
+    pEmCtx.fillStyle = '#3B281E';
+    pEmCtx.fillRect(0, 768, 256, 256);
+  }
+
+  // (1,3) Sakura-Pink & Flame-Gold Anime Kimono / Haori with Crimson Obi Sash
+  {
+    const cx = 256;
+    const cy = 768;
+    paintHandbrushedBase(pCtx, cx, cy, 256, 256, '#F472B6', '#FB7185', 0.18);
+    pEmCtx.fillStyle = '#4C1D3D';
+    pEmCtx.fillRect(cx, cy, 256, 256);
+    // Gold & crimson flame/geometric hem motifs
+    for (let i = 0; i < 8; i++) {
+      pCtx.fillStyle = i % 2 === 0 ? '#FBBF24' : '#EF4444';
+      pCtx.beginPath();
+      pCtx.moveTo(cx + i * 32, cy + 160);
+      pCtx.lineTo(cx + i * 32 + 16, cy + 95);
+      pCtx.lineTo(cx + i * 32 + 32, cy + 160);
+      pCtx.closePath();
+      pCtx.fill();
+    }
+    // Emerald & gold checkered obi sash
+    pCtx.fillStyle = '#059669';
+    pCtx.fillRect(cx, cy + 160, 256, 36);
+    pCtx.fillStyle = '#FDE047';
+    pCtx.fillRect(cx, cy + 174, 256, 8);
+  }
+
+  // (2,3) Golden-Tan Shiba Inu & Calico Neko Pet Fur (Warm Amber-Gold + Cream Belly + Red Collar)
+  {
+    const cx = 512;
+    const cy = 768;
+    const sGrad = pCtx.createLinearGradient(cx, cy, cx, cy + 256);
+    sGrad.addColorStop(0, '#F59E0B');
+    sGrad.addColorStop(0.65, '#D97706');
+    sGrad.addColorStop(1, '#FEF3C7');
+    pCtx.fillStyle = sGrad;
+    pCtx.fillRect(cx, cy, 256, 256);
+    pEmCtx.fillStyle = '#3D260A';
+    pEmCtx.fillRect(cx, cy, 256, 256);
+    // Red pet collar with golden bell stripe
+    pCtx.fillStyle = '#EF4444';
+    pCtx.fillRect(cx, cy + 148, 256, 20);
+    pCtx.fillStyle = '#FDE047';
+    pCtx.fillRect(cx + 108, cy + 146, 40, 24);
+  }
+
+  // (3,3) Top Half (row 6 of 8): Dark Burgundy-Black Anime Hair & Eyes
+  //       Bottom Half (row 7 of 8): Snowy White Kitsune / Neko Fur with Vermilion Collar
+  {
+    const cx = 768;
+    const cy = 768;
+    // Upper half (y = 768..896): Pure dark burgundy-black anime hair & glossy dark eyes
+    pCtx.fillStyle = '#180D1E';
+    pCtx.fillRect(cx, cy, 256, 128);
+    pCtx.fillStyle = '#7F1D1D';
+    for (let i = 0; i < 6; i++) {
+      pCtx.fillRect(cx + i * 42 + 8, cy + 12, 16, 104);
+    }
+    pEmCtx.fillStyle = '#140A18';
+    pEmCtx.fillRect(cx, cy, 256, 128);
+
+    // Lower half (y = 896..1024): Pure snowy white Kitsune / Neko fur with vermilion markings
+    pCtx.fillStyle = '#F8FAFC';
+    pCtx.fillRect(cx, cy + 128, 256, 128);
+    pCtx.fillStyle = '#EF4444';
+    pCtx.fillRect(cx, cy + 136, 256, 20);
+    pEmCtx.fillStyle = '#332B38';
+    pEmCtx.fillRect(cx, cy + 128, 256, 128);
+  }
 
   onProgress?.(75, 'Painting Atlas 03: Cobblestone Alleys, Asphalt & Earth Cross-Section...');
 

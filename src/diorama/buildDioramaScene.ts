@@ -638,7 +638,7 @@ export function buildDioramaScene(
   const lampGlobeGeo = mapGeometryToAtlasCell(
     new THREE.SphereGeometry(0.22, 10, 8),
     0,
-    3,
+    1,
   );
   lampGlobeGeo.translate(0, 2.48, 0);
   const lampMergedGeo = trackGeo(mergeGeometries([lampPoleGeo, lampGlobeGeo], false)!);
@@ -874,33 +874,404 @@ export function buildDioramaScene(
   addMeshWithOutline(tramGroup, tramHullGeo, propsMat, [0, 0.68, 0], [0, 0, 0], [1, 1, 1], false);
   addMeshWithOutline(tramGroup, tramRoofGeo, propsMat, [0, 1.45, 0], [0, 0, 0], [1, 1, 1], false);
 
-  // 5D. 6 Tiny Kawaii Chibi Characters (Composite Head + Body + Hat/Bag)
-  const chibiGroupList: Array<{ group: THREE.Group; baseX: number; baseZ: number; phase: number }> = [];
-  const charHeadGeo = trackGeo(
-    mapGeometryToAtlasCell(new THREE.SphereGeometry(0.16, 10, 8), 0, 3),
+  // ============================================================================
+  // 5D. 14 TINY ANIME CHIBI CHARACTERS & 12 CUTE PETS (Shiba Inu, Neko, Kitsune)
+  // ============================================================================
+  type AnimeArchetype = 'swordsman' | 'kimono-girl' | 'zen-thunder' | 'miko-lantern';
+  interface AnimatedAnimeChibi {
+    group: THREE.Group;
+    leftLeg: THREE.Mesh;
+    rightLeg: THREE.Mesh;
+    leftArm: THREE.Mesh;
+    rightArm: THREE.Mesh;
+    baseX: number;
+    baseY: number;
+    baseZ: number;
+    walkAxis: 'x' | 'z';
+    walkRange: number;
+    phase: number;
+    speed: number;
+  }
+
+  type PetArchetype = 'shiba' | 'neko' | 'kitsune';
+  interface AnimatedPet {
+    group: THREE.Group;
+    tail: THREE.Mesh;
+    frontPaws: THREE.Mesh;
+    backPaws: THREE.Mesh;
+    baseX: number;
+    baseY: number;
+    baseZ: number;
+    walkAxis: 'x' | 'z';
+    walkRange: number;
+    phase: number;
+    speed: number;
+  }
+
+  const chibiGroupList: AnimatedAnimeChibi[] = [];
+  const petGroupList: AnimatedPet[] = [];
+
+  // Shared low-poly geometries for Anime Chibi Characters
+  const animeHeadGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.SphereGeometry(0.165, 10, 8), 0, 3),
   );
-  const charBodyGeo = trackGeo(
-    mapGeometryToAtlasCell(new THREE.CapsuleGeometry(0.13, 0.24, 4, 8), 3, 2),
+  const animeEyeGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.BoxGeometry(0.042, 0.055, 0.025), 3, 6, 4, 8),
   );
-  const charCoords: Array<[number, number]> = [
-    [-2.2, 4.5],
-    [1.8, 3.8],
-    [-1.4, 1.8],
-    [2.8, -2.2],
-    [-2.6, -3.4],
-    [1.8, 6.2],
-  ];
-  charCoords.forEach(([cx, cz], idx) => {
+  const haoriCheckeredGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.CylinderGeometry(0.11, 0.195, 0.34, 8), 3, 2),
+  );
+  const haoriKimonoPinkGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.CylinderGeometry(0.105, 0.185, 0.34, 8), 1, 3),
+  );
+  const haoriGoldenGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.CylinderGeometry(0.11, 0.195, 0.34, 8), 2, 3),
+  );
+  const haoriMikoRedGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.CylinderGeometry(0.11, 0.19, 0.34, 8), 2, 0),
+  );
+  const animeLegGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.CapsuleGeometry(0.048, 0.12, 4, 6), 3, 2),
+  );
+  const sleeveCheckeredGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.ConeGeometry(0.072, 0.22, 6), 3, 2),
+  );
+  const sleevePinkGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.ConeGeometry(0.072, 0.22, 6), 1, 3),
+  );
+  const sleeveGoldGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.ConeGeometry(0.072, 0.22, 6), 2, 3),
+  );
+  const hairDarkCapGeo = trackGeo(
+    mapGeometryToAtlasCell(
+      new THREE.SphereGeometry(0.174, 9, 7, 0, Math.PI * 2, 0, Math.PI * 0.62),
+      3,
+      6,
+      4,
+      8,
+    ),
+  );
+  const hairGoldCapGeo = trackGeo(
+    mapGeometryToAtlasCell(
+      new THREE.SphereGeometry(0.174, 9, 7, 0, Math.PI * 2, 0, Math.PI * 0.62),
+      2,
+      2,
+    ),
+  );
+  const hairSpikeDarkGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.ConeGeometry(0.068, 0.17, 5), 3, 6, 4, 8),
+  );
+  const hairSpikeGoldGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.ConeGeometry(0.068, 0.17, 5), 2, 2),
+  );
+  const hairBunPinkGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.SphereGeometry(0.072, 7, 6), 1, 3),
+  );
+  const woodBoxBackpackGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.BoxGeometry(0.18, 0.26, 0.13), 0, 2),
+  );
+  const katanaScabbardGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.CylinderGeometry(0.018, 0.018, 0.42, 6), 3, 6, 4, 8),
+  );
+  const handLanternGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.CylinderGeometry(0.065, 0.055, 0.15, 7), 0, 1),
+  );
+
+  const createAnimeCharacter = (
+    archetype: AnimeArchetype,
+    x: number,
+    y: number,
+    z: number,
+    walkAxis: 'x' | 'z',
+    walkRange: number,
+    phase: number,
+    speed: number,
+  ) => {
     const cg = new THREE.Group();
-    cg.position.set(cx, 0.08, cz);
-    const body = new THREE.Mesh(charBodyGeo, propsMat);
-    body.position.y = 0.24;
-    const head = new THREE.Mesh(charHeadGeo, propsMat);
-    head.position.y = 0.54;
-    cg.add(body, head);
+    cg.position.set(x, y, z);
+    cg.scale.setScalar(1.08);
+
+    // Legs (with pivot at hip)
+    const leftLeg = new THREE.Mesh(animeLegGeo, propsMat);
+    leftLeg.position.set(-0.065, 0.11, 0);
+    const rightLeg = new THREE.Mesh(animeLegGeo, propsMat);
+    rightLeg.position.set(0.065, 0.11, 0);
+    cg.add(leftLeg, rightLeg);
+
+    // Haori / Kimono Torso + Outline
+    const torsoGeo =
+      archetype === 'swordsman'
+        ? haoriCheckeredGeo
+        : archetype === 'kimono-girl'
+          ? haoriKimonoPinkGeo
+          : archetype === 'zen-thunder'
+            ? haoriGoldenGeo
+            : haoriMikoRedGeo;
+    addMeshWithOutline(cg, torsoGeo, propsMat, [0, 0.31, 0], [0, 0, 0], [1, 1, 1], false);
+
+    // Haori Sleeves / Arms
+    const armGeo =
+      archetype === 'swordsman'
+        ? sleeveCheckeredGeo
+        : archetype === 'kimono-girl' || archetype === 'miko-lantern'
+          ? sleevePinkGeo
+          : sleeveGoldGeo;
+    const leftArm = new THREE.Mesh(armGeo, propsMat);
+    leftArm.position.set(-0.165, 0.33, 0);
+    leftArm.rotation.z = 0.24;
+    const rightArm = new THREE.Mesh(armGeo, propsMat);
+    rightArm.position.set(0.165, 0.33, 0);
+    rightArm.rotation.z = -0.24;
+    cg.add(leftArm, rightArm);
+
+    // Head + Kawaii Eyes (+Z is front of character)
+    addMeshWithOutline(cg, animeHeadGeo, propsMat, [0, 0.59, 0], [0, 0, 0], [1, 1, 1], false);
+    const leftEye = new THREE.Mesh(animeEyeGeo, propsMat);
+    leftEye.position.set(-0.06, 0.59, 0.148);
+    const rightEye = new THREE.Mesh(animeEyeGeo, propsMat);
+    rightEye.position.set(0.06, 0.59, 0.148);
+    cg.add(leftEye, rightEye);
+
+    // Hair & Signature Accessories
+    const isGoldHair = archetype === 'zen-thunder';
+    const capGeo = isGoldHair ? hairGoldCapGeo : hairDarkCapGeo;
+    const spikeGeo = isGoldHair ? hairSpikeGoldGeo : hairSpikeDarkGeo;
+    const hairCap = new THREE.Mesh(capGeo, propsMat);
+    hairCap.position.set(0, 0.61, -0.01);
+    cg.add(hairCap);
+
+    if (archetype === 'swordsman' || archetype === 'zen-thunder') {
+      // Spiky anime hero hair crown
+      const spikeOffsets: Array<[number, number, number, number, number]> = [
+        [0, 0.77, -0.04, -0.35, 0],
+        [-0.12, 0.73, -0.02, -0.2, 0.55],
+        [0.12, 0.73, -0.02, -0.2, -0.55],
+        [-0.09, 0.69, 0.11, 0.45, 0.3],
+        [0.09, 0.69, 0.11, 0.45, -0.3],
+      ];
+      for (const [sx, sy, sz, rx, rz] of spikeOffsets) {
+        const sp = new THREE.Mesh(spikeGeo, propsMat);
+        sp.position.set(sx, sy, sz);
+        sp.rotation.set(rx, 0, rz);
+        cg.add(sp);
+      }
+
+      // Nichirin Katana Scabbard at left hip
+      const katana = new THREE.Mesh(katanaScabbardGeo, propsMat);
+      katana.position.set(-0.15, 0.25, -0.04);
+      katana.rotation.set(0.85, 0, 0.18);
+      cg.add(katana);
+
+      // Wooden Companion Box on back for Checkered Haori Swordsman
+      if (archetype === 'swordsman') {
+        addMeshWithOutline(
+          cg,
+          woodBoxBackpackGeo,
+          propsMat,
+          [0, 0.35, -0.15],
+          [0, 0, 0],
+          [1, 1, 1],
+          false,
+        );
+      }
+    } else {
+      // Twin Kawaii Hair Buns + Flowing Back Hair for Kimono Girl & Miko
+      const bunL = new THREE.Mesh(hairBunPinkGeo, propsMat);
+      bunL.position.set(-0.155, 0.68, -0.02);
+      const bunR = new THREE.Mesh(hairBunPinkGeo, propsMat);
+      bunR.position.set(0.155, 0.68, -0.02);
+      cg.add(bunL, bunR);
+
+      if (archetype === 'miko-lantern') {
+        // Glowing Hand-Held Chochin Paper Lantern
+        const heldLantern = new THREE.Mesh(handLanternGeo, propsMat);
+        heldLantern.position.set(0.2, 0.36, 0.16);
+        cg.add(heldLantern);
+      }
+    }
+
     rootGroup.add(cg);
-    chibiGroupList.push({ group: cg, baseX: cx, baseZ: cz, phase: idx * 1.3 });
-  });
+    chibiGroupList.push({
+      group: cg,
+      leftLeg,
+      rightLeg,
+      leftArm,
+      rightArm,
+      baseX: x,
+      baseY: y,
+      baseZ: z,
+      walkAxis,
+      walkRange,
+      phase,
+      speed,
+    });
+  };
+
+  // Shared low-poly geometries for Cute Pets (Shiba Inu, Calico/White Neko, Kitsune Fox Pup)
+  const shibaBodyGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.BoxGeometry(0.17, 0.16, 0.29), 2, 3),
+  );
+  const shibaHeadGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.SphereGeometry(0.115, 9, 7), 2, 3),
+  );
+  const kitsuneBodyGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.BoxGeometry(0.16, 0.15, 0.28), 3, 7, 4, 8),
+  );
+  const kitsuneHeadGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.SphereGeometry(0.11, 9, 7), 3, 7, 4, 8),
+  );
+  const petSnoutGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.ConeGeometry(0.052, 0.1, 6), 0, 3),
+  );
+  const shibaEarGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.ConeGeometry(0.044, 0.1, 5), 2, 3),
+  );
+  const kitsuneEarGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.ConeGeometry(0.048, 0.13, 5), 2, 0),
+  );
+  const shibaTailGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.TorusGeometry(0.055, 0.026, 6, 10, Math.PI * 1.35), 2, 3),
+  );
+  const nekoTailGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.CylinderGeometry(0.022, 0.018, 0.22, 6), 2, 3),
+  );
+  const kitsuneTailGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.ConeGeometry(0.068, 0.24, 7), 3, 7, 4, 8),
+  );
+  const petPawPairGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.BoxGeometry(0.15, 0.08, 0.065), 0, 3),
+  );
+
+  const createCutePet = (
+    petType: PetArchetype,
+    x: number,
+    y: number,
+    z: number,
+    walkAxis: 'x' | 'z',
+    walkRange: number,
+    phase: number,
+    speed: number,
+  ) => {
+    const pg = new THREE.Group();
+    pg.position.set(x, y, z);
+    pg.scale.setScalar(1.08);
+
+    const bodyGeo = petType === 'shiba' ? shibaBodyGeo : kitsuneBodyGeo;
+    const headGeo = petType === 'shiba' ? shibaHeadGeo : kitsuneHeadGeo;
+    const earGeo = petType === 'kitsune' ? kitsuneEarGeo : shibaEarGeo;
+
+    // Plump Pet Body + Head
+    addMeshWithOutline(pg, bodyGeo, propsMat, [0, 0.14, 0], [0, 0, 0], [1, 1, 1], false);
+    addMeshWithOutline(pg, headGeo, propsMat, [0, 0.24, 0.15], [0, 0, 0], [1, 1, 1], false);
+
+    // Cute Snout + Dark Eyes
+    const snout = new THREE.Mesh(petSnoutGeo, propsMat);
+    snout.position.set(0, 0.22, 0.255);
+    snout.rotation.x = Math.PI / 2;
+    const eyeL = new THREE.Mesh(animeEyeGeo, propsMat);
+    eyeL.position.set(-0.048, 0.255, 0.24);
+    eyeL.scale.setScalar(0.65);
+    const eyeR = new THREE.Mesh(animeEyeGeo, propsMat);
+    eyeR.position.set(0.048, 0.255, 0.24);
+    eyeR.scale.setScalar(0.65);
+    pg.add(snout, eyeL, eyeR);
+
+    // Perky Pointed Ears
+    const earL = new THREE.Mesh(earGeo, propsMat);
+    earL.position.set(-0.065, 0.34, 0.14);
+    earL.rotation.z = 0.22;
+    const earR = new THREE.Mesh(earGeo, propsMat);
+    earR.position.set(0.065, 0.34, 0.14);
+    earR.rotation.z = -0.22;
+    pg.add(earL, earR);
+
+    // Front & Back Animated Paws
+    const frontPaws = new THREE.Mesh(petPawPairGeo, propsMat);
+    frontPaws.position.set(0, 0.045, 0.095);
+    const backPaws = new THREE.Mesh(petPawPairGeo, propsMat);
+    backPaws.position.set(0, 0.045, -0.095);
+    pg.add(frontPaws, backPaws);
+
+    // Expressive Wagging Tail (Shiba curled donut tail, Neko upright tail, Kitsune fluffy tail)
+    const tail = new THREE.Mesh(
+      petType === 'shiba'
+        ? shibaTailGeo
+        : petType === 'neko'
+          ? nekoTailGeo
+          : kitsuneTailGeo,
+      propsMat,
+    );
+    tail.position.set(0, 0.22, -0.155);
+    if (petType === 'kitsune') {
+      tail.rotation.x = -0.65;
+    } else if (petType === 'neko') {
+      tail.rotation.x = -0.25;
+    }
+    pg.add(tail);
+
+    rootGroup.add(pg);
+    petGroupList.push({
+      group: pg,
+      tail,
+      frontPaws,
+      backPaws,
+      baseX: x,
+      baseY: y,
+      baseZ: z,
+      walkAxis,
+      walkRange,
+      phase,
+      speed,
+    });
+  };
+
+  // Populate 14 Anime Characters across Central Yokocho & the 4 Cardinal Infinity Bridges
+  const animeRoster: Array<
+    [AnimeArchetype, number, number, number, 'x' | 'z', number, number, number]
+  > = [
+    // Central Yokocho Street & Shrine Plaza (framed head-to-toe in front of POV spawn!)
+    ['swordsman', 0.72, 0.08, 4.1, 'z', 1.0, 2.2, 1.05],
+    ['kimono-girl', -0.35, 0.08, 3.85, 'z', 1.0, 2.4, 1.05],
+    ['zen-thunder', -1.45, 0.08, 2.7, 'z', 0.95, 1.4, 1.25],
+    ['miko-lantern', 1.45, 0.08, 2.5, 'z', 0.95, 2.2, 0.95],
+    ['swordsman', -2.1, 0.08, -1.8, 'z', 1.2, 3.1, 1.1],
+    ['kimono-girl', 2.15, 0.08, -2.4, 'z', 1.2, 4.0, 1.05],
+    ['miko-lantern', 0.2, 0.42, 1.15, 'x', 0.85, 1.8, 0.85], // Shrine terrace miko
+    ['zen-thunder', -0.9, 0.08, -5.1, 'x', 1.4, 2.7, 1.25], // North tram crossing
+    ['kimono-girl', -4.2, 0.08, 6.1, 'x', 1.3, 0.8, 1.0], // Ramen front street
+    ['swordsman', 4.2, 0.08, 6.1, 'x', 1.3, 3.6, 1.1], // Koban front street
+    // 4 Cardinal Infinity Bridges (framed head-to-toe on each themed bridge!)
+    ['swordsman', 0.58, 0.08, -18.2, 'z', 1.2, 2.2, 1.05], // North Crimson-Gold Bridge
+    ['kimono-girl', 18.2, 0.08, 1.32, 'x', 1.2, 2.2, 1.05], // East Cyber-Jade Bridge
+    ['miko-lantern', -0.55, 0.08, 18.2, 'z', 1.2, 2.2, 1.05], // South Matcha-Tea Bridge
+    ['zen-thunder', -18.2, 0.08, 2.28, 'x', 1.2, 2.2, 1.15], // West Wisteria-Onsen Bridge
+  ];
+  for (const args of animeRoster) {
+    createAnimeCharacter(...args);
+  }
+
+  // Populate 12 Cute Pets (Shiba Inu Dogs, Calico/White Cats, Kitsune Spirit Fox Pups)
+  const petRoster: Array<
+    [PetArchetype, number, number, number, 'x' | 'z', number, number, number]
+  > = [
+    // Central Yokocho Street & Shrine Pets
+    ['shiba', 1.22, 0.08, 4.35, 'z', 1.0, 2.1, 1.05], // Loyal Shiba trotting beside Swordsman
+    ['neko', -0.88, 0.08, 4.15, 'z', 0.9, 2.5, 1.05], // Cute Neko cat on main alley
+    ['kitsune', -0.85, 0.42, 0.95, 'x', 0.65, 1.5, 1.2], // Spirit Fox pup on Inari Shrine terrace
+    ['kitsune', 1.15, 0.42, 0.95, 'x', 0.65, 3.2, 1.2], // Twin Spirit Fox pup at Shrine
+    ['neko', -2.25, 0.08, 3.4, 'z', 0.75, 2.1, 1.1], // Ramen shop lucky cat
+    ['shiba', 2.05, 0.08, 5.7, 'x', 1.1, 2.8, 1.3], // Koban patrol Shiba Inu
+    ['neko', 2.65, 0.08, -1.9, 'z', 0.85, 3.9, 1.05], // Konbini cat
+    ['shiba', -1.5, 0.08, -2.2, 'z', 1.0, 4.7, 1.25], // Taiyaki stand Shiba pup
+    // 4 Cardinal Infinity Bridge Pets
+    ['kitsune', -0.48, 0.08, -17.8, 'z', 1.2, 2.4, 1.05], // North Crimson-Gold Bridge Fox Pup
+    ['shiba', 17.8, 0.08, 2.28, 'x', 1.2, 2.4, 1.05], // East Cyber-Jade Bridge Shiba Inu
+    ['neko', 0.48, 0.08, 17.8, 'z', 1.2, 2.4, 1.05], // South Matcha-Tea Bridge Lucky Cat
+    ['kitsune', -17.8, 0.08, 1.32, 'x', 1.2, 2.4, 1.15], // West Wisteria-Onsen Bridge Fox Pup
+  ];
+  for (const args of petRoster) {
+    createCutePet(...args);
+  }
 
   // 5E. Drifting Steam Puffs & Low-Poly Fluffy Clouds
   const steamGeo = trackGeo(
@@ -1336,13 +1707,48 @@ export function buildDioramaScene(
       tg.rotation.x = Math.cos(elapsed * 1.3 + i * 0.9) * 0.025;
     }
 
-    // 5. Tiny Kawaii Chibi Characters strolling & bobbing
+    // 5. Tiny Anime Chibi Characters & Cute Pets strolling, swinging limbs, and wagging tails
     for (let i = 0; i < chibiGroupList.length; i++) {
       const c = chibiGroupList[i];
-      const walkOffset = Math.sin(elapsed * 0.8 + c.phase) * 0.85;
-      c.group.position.z = c.baseZ + walkOffset;
-      c.group.position.y = 0.08 + Math.abs(Math.sin(elapsed * 5.2 + c.phase)) * 0.06;
-      c.group.rotation.y = Math.cos(elapsed * 0.8 + c.phase) >= 0 ? 0 : Math.PI;
+      const t = elapsed * c.speed + c.phase;
+      const offset = Math.sin(t) * c.walkRange;
+      const dir = Math.cos(t) >= 0 ? 1 : -1;
+
+      if (c.walkAxis === 'z') {
+        c.group.position.z = c.baseZ + offset;
+        c.group.rotation.y = dir >= 0 ? 0 : Math.PI;
+      } else {
+        c.group.position.x = c.baseX + offset;
+        c.group.rotation.y = dir >= 0 ? Math.PI / 2 : -Math.PI / 2;
+      }
+
+      const stride = Math.sin(elapsed * 7.5 + c.phase);
+      c.group.position.y = c.baseY + Math.abs(stride) * 0.045;
+      c.leftLeg.rotation.x = stride * 0.52;
+      c.rightLeg.rotation.x = -stride * 0.52;
+      c.leftArm.rotation.x = -stride * 0.38;
+      c.rightArm.rotation.x = stride * 0.38;
+    }
+
+    for (let i = 0; i < petGroupList.length; i++) {
+      const p = petGroupList[i];
+      const t = elapsed * p.speed + p.phase;
+      const offset = Math.sin(t) * p.walkRange;
+      const dir = Math.cos(t) >= 0 ? 1 : -1;
+
+      if (p.walkAxis === 'z') {
+        p.group.position.z = p.baseZ + offset;
+        p.group.rotation.y = dir >= 0 ? 0 : Math.PI;
+      } else {
+        p.group.position.x = p.baseX + offset;
+        p.group.rotation.y = dir >= 0 ? Math.PI / 2 : -Math.PI / 2;
+      }
+
+      const trot = Math.sin(elapsed * 10.5 + p.phase);
+      p.group.position.y = p.baseY + Math.abs(trot) * 0.055;
+      p.frontPaws.rotation.x = trot * 0.48;
+      p.backPaws.rotation.x = -trot * 0.48;
+      p.tail.rotation.z = Math.sin(elapsed * 14.0 + i) * 0.42;
     }
 
     // 6. Rising Steam Puffs
