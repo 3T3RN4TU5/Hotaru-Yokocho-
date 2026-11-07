@@ -429,15 +429,57 @@ export function createDioramaAtlases(
     bCtx.fillText('ほたる', nx + 128, ny + 140);
   }
 
-  // Cell (2, 3): Warm Cedar & Cypress Timber Trim
+  // Cell (2, 3): Mugenjo Castle Hinoki Timber & Glowing Golden Shoji Lattice (無限城 障子)
   {
     const wx = 2 * 256;
     const wy = 3 * 256;
-    paintHandbrushedBase(bCtx, wx, wy, 256, 256, '#D97706', '#78350F', 0.3);
-    for (let i = 0; i < 8; i++) {
-      bCtx.strokeStyle = 'rgba(40, 15, 5, 0.35)';
-      bCtx.lineWidth = 3;
-      bCtx.strokeRect(wx + i * 32, wy, 32, 256);
+    paintHandbrushedBase(bCtx, wx, wy, 256, 256, '#451A03', '#271206', 0.35);
+
+    // Paint 3x3 warm glowing Shoji Screen panels with kumiko wooden lattice
+    const panelCols = 3;
+    const panelRows = 3;
+    const pw = 68;
+    const ph = 66;
+    for (let r = 0; r < panelRows; r++) {
+      for (let c = 0; c < panelCols; c++) {
+        const px = wx + 18 + c * 76;
+        const py = wy + 18 + r * 76;
+
+        const shojiGrad = bCtx.createLinearGradient(px, py, px, py + ph);
+        shojiGrad.addColorStop(0, '#FDE047');
+        shojiGrad.addColorStop(0.55, '#F59E0B');
+        shojiGrad.addColorStop(1, '#EA580C');
+        bCtx.fillStyle = shojiGrad;
+        bCtx.fillRect(px, py, pw, ph);
+
+        // Emissive warm biwa-amber shoji glow
+        const emGrad = bEmCtx.createLinearGradient(px, py, px, py + ph);
+        emGrad.addColorStop(0, '#FEF08A');
+        emGrad.addColorStop(0.6, '#F59E0B');
+        emGrad.addColorStop(1, '#DC2626');
+        bEmCtx.fillStyle = emGrad;
+        bEmCtx.fillRect(px + 2, py + 2, pw - 4, ph - 4);
+
+        // Fine dark hinoki kumiko lattice bars
+        bCtx.strokeStyle = '#3B1105';
+        bCtx.lineWidth = 3;
+        bCtx.strokeRect(px, py, pw, ph);
+        bCtx.beginPath();
+        bCtx.moveTo(px + pw / 2, py);
+        bCtx.lineTo(px + pw / 2, py + ph);
+        bCtx.moveTo(px, py + ph / 2);
+        bCtx.lineTo(px + pw, py + ph / 2);
+        bCtx.stroke();
+
+        bEmCtx.strokeStyle = '#1C0903';
+        bEmCtx.lineWidth = 3;
+        bEmCtx.beginPath();
+        bEmCtx.moveTo(px + pw / 2, py);
+        bEmCtx.lineTo(px + pw / 2, py + ph);
+        bEmCtx.moveTo(px, py + ph / 2);
+        bEmCtx.lineTo(px + pw, py + ph / 2);
+        bEmCtx.stroke();
+      }
     }
   }
 

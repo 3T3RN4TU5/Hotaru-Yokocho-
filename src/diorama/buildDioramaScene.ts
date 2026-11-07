@@ -6,12 +6,15 @@ import {
   WaypointSample,
   sampleLoopPath,
   computeNeonFlicker,
+  generateInfinityCastleLayout,
 } from './dioramaLogic';
 import { DioramaAtlasBundle, mapGeometryToAtlasCell } from './textureAtlases';
 
 export interface BuiltDioramaScene {
   rootGroup: THREE.Group;
+  infinityGroup: THREE.Group;
   setOutlineVisible: (visible: boolean) => void;
+  setInfinityCastleVisible: (visible: boolean) => void;
   raycastTargets: THREE.Object3D[];
   buildingGroups: Map<string, THREE.Group>;
   materials: {
@@ -107,6 +110,18 @@ export function buildDioramaScene(
   };
 
   // Shared Atlas Materials (3 primary texture atlases)
+  const applyInstanceEmissiveTint = (shader: THREE.WebGLProgramParametersWithUniforms) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <emissivemap_fragment>',
+      `
+      #include <emissivemap_fragment>
+      #ifdef USE_INSTANCING_COLOR
+        totalEmissiveRadiance *= vInstanceColor;
+      #endif
+      `,
+    );
+  };
+
   const buildingsMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     map: atlases.buildingsColor,
@@ -117,6 +132,7 @@ export function buildDioramaScene(
     roughness: 0.72,
     metalness: 0.05,
   });
+  buildingsMat.onBeforeCompile = applyInstanceEmissiveTint;
 
   const propsMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
@@ -128,6 +144,7 @@ export function buildDioramaScene(
     roughness: 0.65,
     metalness: 0.08,
   });
+  propsMat.onBeforeCompile = applyInstanceEmissiveTint;
 
   const groundMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
@@ -631,7 +648,7 @@ export function buildDioramaScene(
   const lampPositions: Array<[number, number, number]> = [
     [-8.8, 0.08, 6.2],
     [-4.2, 0.08, 6.2],
-    [0.4, 0.08, 6.2],
+    [-1.7, 0.08, 6.2],
     [4.8, 0.08, 6.2],
     [8.8, 0.08, 6.2],
     [-3.2, 0.08, 2.4],
@@ -640,7 +657,7 @@ export function buildDioramaScene(
     [3.2, 0.08, -2.8],
     [-8.5, 0.08, -3.5],
     [8.5, 0.08, -3.5],
-    [0.2, 0.42, 1.8],
+    [1.8, 0.42, 1.8],
   ];
 
   const lampsInstanced = new THREE.InstancedMesh(
@@ -867,11 +884,11 @@ export function buildDioramaScene(
   );
   const charCoords: Array<[number, number]> = [
     [-2.2, 4.5],
-    [1.4, 3.8],
-    [-0.2, 1.8],
+    [1.8, 3.8],
+    [-1.4, 1.8],
     [2.8, -2.2],
     [-2.6, -3.4],
-    [0.6, 6.2],
+    [1.8, 6.2],
   ];
   charCoords.forEach(([cx, cz], idx) => {
     const cg = new THREE.Group();
@@ -891,8 +908,8 @@ export function buildDioramaScene(
   );
   const steamPuffs: Array<{ mesh: THREE.Mesh; origin: [number, number, number]; offset: number }> = [];
   const steamOrigins: Array<[number, number, number]> = [
-    [-5.6, 4.9, 4.2], // Ramen shop steam
-    [-5.6, 5.2, 4.2],
+    [-6.0, 4.9, 4.4], // Ramen shop steam
+    [-6.0, 5.2, 4.4],
     [-6.9, 5.9, -7.2], // Sento bathhouse chimney steam
     [-6.9, 6.3, -7.2],
   ];
@@ -918,6 +935,367 @@ export function buildDioramaScene(
     lanternLights.push(pl);
   }
 
+  onProgress?.(97, 'Instantiating Multi-Hotaru-Yokocho Infinity Castle Megastructure...');
+
+  // ============================================================================
+  // 6. MULTI-THEMED YOKOCHO INFINITY CASTLE (4 Distinct Architectural Archetypes!)
+  // ============================================================================
+  const infinityGroup = new THREE.Group();
+  rootGroup.add(infinityGroup);
+
+  const mugenjoLayout = generateInfinityCastleLayout();
+
+  // Helper to construct 4 distinct architectural district archetypes so every theme has its own silhouette & layout
+  const buildArchetypeGeos = (
+    archetype: 'pagoda' | 'cyber' | 'matcha' | 'onsen',
+  ): { buildingsGeo: THREE.BufferGeometry; propsGeo: THREE.BufferGeometry } => {
+    const bParts: THREE.BufferGeometry[] = [];
+    const pParts: THREE.BufferGeometry[] = [];
+
+    const addBox = (
+      target: THREE.BufferGeometry[],
+      w: number,
+      h: number,
+      d: number,
+      x: number,
+      y: number,
+      z: number,
+      col: number,
+      row: number,
+    ) => {
+      const g = mapGeometryToAtlasCell(new THREE.BoxGeometry(w, h, d), col, row);
+      g.translate(x, y + h / 2, z);
+      target.push(g);
+    };
+
+    const addRoof = (
+      target: THREE.BufferGeometry[],
+      radius: number,
+      h: number,
+      x: number,
+      y: number,
+      z: number,
+      col: number,
+      row: number,
+    ) => {
+      const g = mapGeometryToAtlasCell(new THREE.ConeGeometry(radius, h, 4), col, row);
+      g.rotateY(Math.PI / 4);
+      g.translate(x, y + h / 2, z);
+      target.push(g);
+    };
+
+    const addTree = (x: number, z: number, scale: number, isSakura: boolean) => {
+      const crown = mapGeometryToAtlasCell(
+        new THREE.SphereGeometry(0.95 * scale, 7, 5),
+        isSakura ? 0 : 1,
+        0,
+      );
+      crown.translate(x, 1.8 * scale, z);
+      pParts.push(crown);
+    };
+
+    if (archetype === 'pagoda') {
+      // ARCHETYPE A: IMPERIAL 5-STORY PAGODA & TORII COLONNADE (Crimson-Gold Theme)
+      for (let tier = 0; tier < 5; tier++) {
+        const w = 4.4 - tier * 0.58;
+        const y = 0.4 + tier * 2.05;
+        addBox(bParts, w, 1.65, w, 0, y, -1.2, 2, 3);
+        addBox(bParts, w + 0.9, 0.25, w + 0.9, 0, y + 1.65, -1.2, 2, 2);
+      }
+      addRoof(bParts, 1.9, 1.8, 0, 10.65, -1.2, 2, 2);
+
+      // Symmetrical flanking Shoji Lantern Halls
+      for (const sx of [-6.2, 6.2]) {
+        addBox(bParts, 3.8, 3.2, 4.2, sx, 0, -1.0, 0, 0);
+        addBox(bParts, 3.2, 2.4, 3.6, sx, 3.2, -1.0, 2, 3);
+        addRoof(bParts, 2.8, 1.4, sx, 5.6, -1.0, 2, 2);
+        addBox(bParts, 3.6, 2.8, 3.4, sx, 0, 4.8, 1, 0);
+        addRoof(bParts, 2.5, 1.2, sx, 2.8, 4.8, 2, 2);
+      }
+
+      // Avenue of 5 Vermilion Torii Gates leading to the Pagoda
+      for (let i = 0; i < 5; i++) {
+        const tz = 2.2 + i * 1.45;
+        addBox(pParts, 0.22, 2.6, 0.22, -1.1, 0, tz, 2, 0);
+        addBox(pParts, 0.22, 2.6, 0.22, 1.1, 0, tz, 2, 0);
+        addBox(pParts, 2.8, 0.24, 0.3, 0, 2.45, tz, 2, 0);
+      }
+      addTree(-3.2, 2.5, 1.2, false);
+      addTree(3.2, 2.5, 1.2, false);
+      addTree(-8.4, -5.5, 1.3, true);
+      addTree(8.4, -5.5, 1.3, true);
+    } else if (archetype === 'cyber') {
+      // ARCHETYPE B: DENKI CYBER-NEON SKYSCRAPER TOWERS & SKYBRIDGE (Cyber-Jade Theme)
+      // Twin High-Rise Arcade Pencil Towers connected by an overhead Neon Skybridge
+      for (const tx of [-4.6, 4.6]) {
+        addBox(bParts, 4.0, 5.2, 4.0, tx, 0, -0.8, 3, 0);
+        addBox(bParts, 3.4, 4.4, 3.4, tx, 5.2, -0.8, 3, 1);
+        addBox(bParts, 2.6, 2.4, 2.6, tx, 9.6, -0.8, 3, 3);
+        // Vertical Neon Blade Signs on both sides
+        addBox(bParts, 0.28, 7.5, 0.95, tx + (tx > 0 ? -2.2 : 2.2), 2.2, 0.5, 3, 3);
+      }
+      // Elevated Skybridge linking the twin towers at y = 6.2
+      addBox(bParts, 5.6, 1.3, 2.2, 0, 6.2, -0.8, 3, 1);
+      addBox(pParts, 5.8, 0.4, 2.4, 0, 7.5, -0.8, 3, 0);
+
+      // Front & Rear Cyber Kiosks & Vending Plazas
+      for (const fx of [-6.4, 6.4]) {
+        addBox(bParts, 3.4, 4.8, 3.4, fx, 0, 4.8, 3, 1);
+        addBox(bParts, 3.6, 5.8, 3.4, fx, 0, -6.2, 3, 0);
+        addBox(pParts, 1.8, 1.5, 0.6, fx * 0.55, 0, 5.5, 3, 0);
+      }
+      // Northern Elevated Double-Deck Metro Viaduct
+      addBox(bParts, 17.6, 0.8, 2.6, 0, 3.4, -8.2, 1, 2);
+      addBox(pParts, 5.2, 1.4, 1.4, 0, 4.2, -8.2, 2, 1);
+      addTree(-8.5, 2.0, 1.1, false);
+      addTree(8.5, 2.0, 1.1, false);
+    } else if (archetype === 'matcha') {
+      // ARCHETYPE C: UJI MATCHA TEA HOUSE TERRACES & BAMBOO GARDEN (Matcha-Emerald Theme)
+      // Central Elevated Octagonal-Style Tea Pavilion
+      addBox(bParts, 4.6, 2.2, 4.6, 0, 0.4, 0, 2, 0);
+      addRoof(bParts, 3.8, 1.6, 0, 2.6, 0, 3, 2);
+      addBox(bParts, 2.8, 1.8, 2.8, 0, 3.8, 0, 2, 1);
+      addRoof(bParts, 2.5, 1.4, 0, 5.6, 0, 3, 2);
+
+      // 6 Stepped Low-Slung Wooden Roasteries with Copper-Green Hipped Roofs
+      const chayaCoords: Array<[number, number, number]> = [
+        [-6.0, 4.4, 3.2],
+        [6.0, 4.4, 3.2],
+        [-6.2, -0.8, 3.8],
+        [6.2, -0.8, 3.8],
+        [-5.6, -6.0, 4.2],
+        [5.6, -6.0, 4.2],
+      ];
+      for (const [cx, cz, ch] of chayaCoords) {
+        addBox(bParts, 3.8, ch, 3.6, cx, 0, cz, 2, 0);
+        addRoof(bParts, 2.9, 1.35, cx, ch, cz, 3, 2);
+        addBox(bParts, 3.4, 0.22, 0.9, cx, ch * 0.55, cz + 2.0, 0, 3);
+      }
+      // Lush Matcha Foliage Grove (8 Trees)
+      for (const [tx, tz] of [
+        [-2.8, 3.2],
+        [2.8, 3.2],
+        [-2.8, -3.2],
+        [2.8, -3.2],
+        [-8.4, 1.8],
+        [8.4, 1.8],
+        [0, -5.8],
+        [0, 5.8],
+      ]) {
+        addTree(tx, tz, 1.25, false);
+      }
+    } else {
+      // ARCHETYPE D: FUJI WISTERIA ONSEN CASTLE & SAKURA ARBOR SANCTUM (Wisteria & Rose Themes)
+      // Monumental Multi-Gabled Sento Bathhouse Keep in the center-north
+      addBox(bParts, 7.2, 3.6, 4.8, 0, 0, -2.2, 0, 1);
+      addBox(bParts, 5.4, 2.8, 3.8, 0, 3.6, -2.2, 2, 3);
+      addRoof(bParts, 4.2, 1.8, 0, 6.4, -2.2, 2, 2);
+      addBox(bParts, 3.2, 2.2, 2.8, 0, 7.6, -2.2, 0, 1);
+      addRoof(bParts, 2.6, 1.5, 0, 9.8, -2.2, 2, 2);
+
+      // Twin Tall Bathhouse Smokestacks
+      for (const sx of [-4.2, 4.2]) {
+        const stack = mapGeometryToAtlasCell(
+          new THREE.CylinderGeometry(0.32, 0.48, 8.5, 8),
+          1,
+          2,
+        );
+        stack.translate(sx, 4.25, -4.2);
+        bParts.push(stack);
+      }
+
+      // Flanking Wisteria Ryokan Inns
+      for (const rx of [-6.0, 6.0]) {
+        addBox(bParts, 3.6, 4.6, 4.0, rx, 0, 3.8, 0, 1);
+        addRoof(bParts, 2.8, 1.4, rx, 4.6, 3.8, 2, 2);
+        addBox(bParts, 0.26, 3.8, 0.85, rx + (rx > 0 ? -2.0 : 2.0), 1.8, 4.2, 3, 3);
+      }
+
+      // Lush Wisteria & Sakura Blossom Canopy Ring (8 Blossom Trees)
+      for (const [tx, tz] of [
+        [-2.6, 2.2],
+        [2.6, 2.2],
+        [-2.8, 5.8],
+        [2.8, 5.8],
+        [-8.2, -1.5],
+        [8.2, -1.5],
+        [-5.8, -6.5],
+        [5.8, -6.5],
+      ]) {
+        addTree(tx, tz, 1.3, true);
+      }
+    }
+
+    const buildingsGeo = trackGeo(mergeGeometries(bParts, false)!);
+    bParts.forEach((g) => g.dispose());
+    const propsGeo = trackGeo(mergeGeometries(pParts, false)!);
+    pParts.forEach((g) => g.dispose());
+
+    return { buildingsGeo, propsGeo };
+  };
+
+  const pagodaArchetype = buildArchetypeGeos('pagoda');
+  const cyberArchetype = buildArchetypeGeos('cyber');
+  const matchaArchetype = buildArchetypeGeos('matcha');
+  const onsenArchetype = buildArchetypeGeos('onsen');
+
+  const instColor = new THREE.Color();
+  const groundInstColor = new THREE.Color();
+
+  // Shared Ground Base InstancedMesh for all 26 Multi-Yokocho District Blocks
+  const blockCount = mugenjoLayout.yokochoBlocks.length;
+  const yokochoGroundInstanced = new THREE.InstancedMesh(mergedBaseGeo, groundMat, blockCount);
+  mugenjoLayout.yokochoBlocks.forEach((blk, idx) => {
+    dummy.position.set(blk.position[0], blk.position[1], blk.position[2]);
+    dummy.rotation.set(blk.rotation[0], blk.rotation[1], blk.rotation[2]);
+    dummy.scale.set(blk.scale[0], blk.scale[1], blk.scale[2]);
+    dummy.updateMatrix();
+    yokochoGroundInstanced.setMatrixAt(idx, dummy.matrix);
+    groundInstColor.set(blk.groundTintHex);
+    yokochoGroundInstanced.setColorAt(idx, groundInstColor);
+  });
+  yokochoGroundInstanced.instanceMatrix.needsUpdate = true;
+  if (yokochoGroundInstanced.instanceColor) yokochoGroundInstanced.instanceColor.needsUpdate = true;
+  yokochoGroundInstanced.computeBoundingSphere();
+  infinityGroup.add(yokochoGroundInstanced);
+
+  // Group blocks by their architectural archetype and create instanced meshes per archetype
+  const archetypeGroups: Array<{
+    geos: { buildingsGeo: THREE.BufferGeometry; propsGeo: THREE.BufferGeometry };
+    blocks: typeof mugenjoLayout.yokochoBlocks;
+  }> = [
+    {
+      geos: pagodaArchetype,
+      blocks: mugenjoLayout.yokochoBlocks.filter((b) => b.themeId === 'amber-shrine'),
+    },
+    {
+      geos: cyberArchetype,
+      blocks: mugenjoLayout.yokochoBlocks.filter((b) => b.themeId === 'cyan-arcade'),
+    },
+    {
+      geos: matchaArchetype,
+      blocks: mugenjoLayout.yokochoBlocks.filter((b) => b.themeId === 'matcha-canal'),
+    },
+    {
+      geos: onsenArchetype,
+      blocks: mugenjoLayout.yokochoBlocks.filter(
+        (b) => b.themeId === 'wisteria-onsen' || b.themeId === 'rose-sky',
+      ),
+    },
+  ];
+
+  for (const group of archetypeGroups) {
+    if (group.blocks.length === 0) continue;
+    const bInst = new THREE.InstancedMesh(
+      group.geos.buildingsGeo,
+      buildingsMat,
+      group.blocks.length,
+    );
+    const pInst = new THREE.InstancedMesh(group.geos.propsGeo, propsMat, group.blocks.length);
+
+    group.blocks.forEach((blk, idx) => {
+      dummy.position.set(blk.position[0], blk.position[1], blk.position[2]);
+      dummy.rotation.set(blk.rotation[0], blk.rotation[1], blk.rotation[2]);
+      dummy.scale.set(blk.scale[0], blk.scale[1], blk.scale[2]);
+      dummy.updateMatrix();
+      bInst.setMatrixAt(idx, dummy.matrix);
+      pInst.setMatrixAt(idx, dummy.matrix);
+
+      instColor.set(blk.tintHex);
+      bInst.setColorAt(idx, instColor);
+      pInst.setColorAt(idx, instColor);
+    });
+
+    bInst.instanceMatrix.needsUpdate = true;
+    pInst.instanceMatrix.needsUpdate = true;
+    if (bInst.instanceColor) bInst.instanceColor.needsUpdate = true;
+    if (pInst.instanceColor) pInst.instanceColor.needsUpdate = true;
+    bInst.computeBoundingSphere();
+    pInst.computeBoundingSphere();
+    infinityGroup.add(bInst, pInst);
+  }
+
+  // 6B. Composite Vermilion & Hinoki Bridges (including 4 Walkable Cardinal Bridges linking Yokocho blocks)
+  const bridgeParts: THREE.BufferGeometry[] = [];
+  const bridgeDeck = mapGeometryToAtlasCell(new THREE.BoxGeometry(2.8, 0.28, 9.2), 2, 3);
+  bridgeParts.push(bridgeDeck);
+
+  const railLeft = mapGeometryToAtlasCell(new THREE.BoxGeometry(0.18, 0.65, 9.2), 2, 0);
+  railLeft.translate(-1.3, 0.42, 0);
+  bridgeParts.push(railLeft);
+
+  const railRight = mapGeometryToAtlasCell(new THREE.BoxGeometry(0.18, 0.65, 9.2), 2, 0);
+  railRight.translate(1.3, 0.42, 0);
+  bridgeParts.push(railRight);
+
+  const mergedBridgeGeo = trackGeo(mergeGeometries(bridgeParts, false)!);
+  bridgeParts.forEach((g) => g.dispose());
+
+  const bridgesInstanced = new THREE.InstancedMesh(
+    mergedBridgeGeo,
+    propsMat,
+    mugenjoLayout.bridges.length,
+  );
+  mugenjoLayout.bridges.forEach((b, idx) => {
+    dummy.position.set(b.position[0], b.position[1], b.position[2]);
+    dummy.rotation.set(b.rotation[0], b.rotation[1], b.rotation[2]);
+    dummy.scale.set(b.scale[0], b.scale[1], b.scale[2]);
+    dummy.updateMatrix();
+    bridgesInstanced.setMatrixAt(idx, dummy.matrix);
+    instColor.set(b.tintHex);
+    bridgesInstanced.setColorAt(idx, instColor);
+  });
+  bridgesInstanced.instanceMatrix.needsUpdate = true;
+  if (bridgesInstanced.instanceColor) bridgesInstanced.instanceColor.needsUpdate = true;
+  bridgesInstanced.computeBoundingSphere();
+  infinityGroup.add(bridgesInstanced);
+
+  // 6C. Colossal Vertical Megastructure Hinoki Pillars spanning the Multi-Yokocho Abyss
+  const pillarGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.BoxGeometry(1.15, 76.0, 1.15), 2, 3),
+  );
+  const pillarsInstanced = new THREE.InstancedMesh(
+    pillarGeo,
+    buildingsMat,
+    mugenjoLayout.pillars.length,
+  );
+  mugenjoLayout.pillars.forEach((p, idx) => {
+    dummy.position.set(p.position[0], p.position[1], p.position[2]);
+    dummy.rotation.set(p.rotation[0], p.rotation[1], p.rotation[2]);
+    dummy.scale.set(p.scale[0], p.scale[1], p.scale[2]);
+    dummy.updateMatrix();
+    pillarsInstanced.setMatrixAt(idx, dummy.matrix);
+    instColor.set(p.tintHex);
+    pillarsInstanced.setColorAt(idx, instColor);
+  });
+  pillarsInstanced.instanceMatrix.needsUpdate = true;
+  if (pillarsInstanced.instanceColor) pillarsInstanced.instanceColor.needsUpdate = true;
+  pillarsInstanced.computeBoundingSphere();
+  infinityGroup.add(pillarsInstanced);
+
+  // 6D. Floating Warm Biwa-Amber Paper Lanterns Drifting in the Abyss
+  const abyssLanternGeo = trackGeo(
+    mapGeometryToAtlasCell(new THREE.CylinderGeometry(0.28, 0.24, 0.68, 8), 0, 1),
+  );
+  const abyssLanternsInstanced = new THREE.InstancedMesh(
+    abyssLanternGeo,
+    propsMat,
+    mugenjoLayout.floatingLanterns.length,
+  );
+  mugenjoLayout.floatingLanterns.forEach((fl, idx) => {
+    dummy.position.set(fl.basePos[0], fl.basePos[1], fl.basePos[2]);
+    dummy.rotation.set(0, 0, 0);
+    dummy.scale.setScalar(1.0);
+    dummy.updateMatrix();
+    abyssLanternsInstanced.setMatrixAt(idx, dummy.matrix);
+    instColor.set(fl.tintHex);
+    abyssLanternsInstanced.setColorAt(idx, instColor);
+  });
+  abyssLanternsInstanced.instanceMatrix.needsUpdate = true;
+  if (abyssLanternsInstanced.instanceColor) abyssLanternsInstanced.instanceColor.needsUpdate = true;
+  abyssLanternsInstanced.computeBoundingSphere();
+  infinityGroup.add(abyssLanternsInstanced);
+
   const triCounts = countGroupTriangles(rootGroup);
 
   const setOutlineVisible = (visible: boolean) => {
@@ -926,8 +1304,12 @@ export function buildDioramaScene(
     }
   };
 
+  const setInfinityCastleVisible = (visible: boolean) => {
+    infinityGroup.visible = visible;
+  };
+
   // ============================================================================
-  // 6. CHEAP PER-FRAME ANIMATION TICK (Zero GC Allocations)
+  // 7. CHEAP PER-FRAME ANIMATION TICK (Zero GC Allocations)
   // ============================================================================
   const updateAnimation = (elapsed: number, _delta: number, isNight: boolean) => {
     // 1. Kei Truck loop
@@ -973,14 +1355,28 @@ export function buildDioramaScene(
       sp.mesh.scale.setScalar(s);
     }
 
-    // 7. Flickering Neon Signs (Night Mode)
+    // 7. Floating Infinity Castle Lanterns gently bobbing in the abyss
+    if (infinityGroup.visible) {
+      for (let i = 0; i < mugenjoLayout.floatingLanterns.length; i++) {
+        const fl = mugenjoLayout.floatingLanterns[i];
+        const yBob = Math.sin(elapsed * fl.speed + fl.phase) * 0.85;
+        dummy.position.set(fl.basePos[0], fl.basePos[1] + yBob, fl.basePos[2]);
+        dummy.rotation.set(0, elapsed * 0.25 + fl.phase, 0);
+        dummy.scale.setScalar(1.0);
+        dummy.updateMatrix();
+        abyssLanternsInstanced.setMatrixAt(i, dummy.matrix);
+      }
+      abyssLanternsInstanced.instanceMatrix.needsUpdate = true;
+    }
+
+    // 8. Flickering Neon Signs (Night / Infinity Castle Mode)
     if (isNight) {
       neonSignsMat.emissiveIntensity = 1.0 * computeNeonFlicker(elapsed, 2);
     } else {
       neonSignsMat.emissiveIntensity = 0.0;
     }
 
-    // 8. Selection ring subtle pulse
+    // 9. Selection ring subtle pulse
     if (highlightRingMat.opacity > 0.01) {
       const s = 1 + Math.sin(elapsed * 4.0) * 0.04;
       highlightRing.scale.set(s, 1, s);
@@ -989,7 +1385,9 @@ export function buildDioramaScene(
 
   return {
     rootGroup,
+    infinityGroup,
     setOutlineVisible,
+    setInfinityCastleVisible,
     raycastTargets,
     buildingGroups,
     materials: {
