@@ -886,8 +886,8 @@ export function stepWalkthroughPov(
 ): PlayerPovState {
   const safeDt = Math.max(0, Math.min(0.1, dt));
 
-  // 1. Update yaw and clamped pitch
-  const turnSpeed = 1.85;
+  // 1. Update yaw (unbounded 360° rotation) and clamped pitch
+  const turnSpeed = 2.45;
   const nextYaw = state.yaw - input.turnYaw * turnSpeed * safeDt - input.lookYawDelta;
   const rawPitch = state.pitch - input.lookPitchDelta;
   const nextPitch = Math.max(-1.22, Math.min(1.22, rawPitch));

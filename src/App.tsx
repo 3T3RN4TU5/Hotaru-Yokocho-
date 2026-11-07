@@ -70,6 +70,7 @@ export default function App() {
   const [cameraMode, setCameraMode] = useState<CameraMode>('orbit');
   const [autoWalkPov, setAutoWalkPov] = useState<boolean>(false);
   const [activePovPresetId, setActivePovPresetId] = useState<string>(POV_SPAWN_PRESETS[0].id);
+  const [povDrawerOpen, setPovDrawerOpen] = useState<boolean>(false);
 
   const [showOutline, setShowOutline] = useState<boolean>(true);
   const [autoRotate, setAutoRotate] = useState<boolean>(true);
@@ -99,6 +100,8 @@ export default function App() {
     cameraMode: 'orbit' as CameraMode,
     autoWalkPov: false,
     autoWalkProgress: 0,
+    autoWalkYawOffset: 0,
+    autoWalkPitchOffset: 0,
     showOutline: true,
     autoRotate: true,
     selectedBuilding: null as BuildingSpec | null,
@@ -161,7 +164,10 @@ export default function App() {
   const teleportPov = useCallback((preset: PovSpawnPreset) => {
     setActivePovPresetId(preset.id);
     setAutoWalkPov(false);
+    setPovDrawerOpen(false);
     stateRef.current.autoWalkPov = false;
+    stateRef.current.autoWalkYawOffset = 0;
+    stateRef.current.autoWalkPitchOffset = 0;
     stateRef.current.povState = {
       x: preset.x,
       y: preset.y,
@@ -185,6 +191,9 @@ export default function App() {
         setHoveredBuilding(null);
         stateRef.current.hoveredBuildingId = null;
         stateRef.current.cameraTransitionActive = false;
+        setPovDrawerOpen(false);
+        stateRef.current.autoWalkYawOffset = 0;
+        stateRef.current.autoWalkPitchOffset = 0;
         const preset =
           POV_SPAWN_PRESETS.find((p) => p.id === activePovPresetId) ?? POV_SPAWN_PRESETS[0];
         stateRef.current.povState = {
@@ -198,6 +207,7 @@ export default function App() {
         };
       } else {
         setAutoWalkPov(false);
+        setPovDrawerOpen(false);
         stateRef.current.autoWalkPov = false;
         stateRef.current.desiredCamPos.copy(OVERVIEW_CAMERA_POS);
         stateRef.current.desiredTarget.copy(OVERVIEW_TARGET_POS);
@@ -269,6 +279,7 @@ export default function App() {
           e.code,
         )
       ) {
+        setPovDrawerOpen(false);
         if (stateRef.current.autoWalkPov) {
           setAutoWalkPov(false);
           stateRef.current.autoWalkPov = false;
@@ -277,6 +288,10 @@ export default function App() {
 
       if (e.key === 'h' || e.key === 'H') {
         setDockCollapsed((prev) => !prev);
+      } else if (e.key === 'm' || e.key === 'M') {
+        if (stateRef.current.cameraMode === 'pov') {
+          setPovDrawerOpen((prev) => !prev);
+        }
       } else if (e.key === 'v' || e.key === 'V') {
         toggleWalkingPovMode();
       } else if (e.key === 'Escape') {
@@ -377,11 +392,13 @@ export default function App() {
     controls.target.copy(OVERVIEW_TARGET_POS);
     controls.enableDamping = !isSoftwareGl;
     controls.dampingFactor = 0.06;
-    controls.minDistance = 6.5;
-    controls.maxDistance = 68;
-    controls.minPolarAngle = 0.15;
-    // Polar-angle limit in Orbit mode so the main block isn't viewed from flat underneath
-    controls.maxPolarAngle = Math.PI * 0.48;
+    controls.minDistance = 5.5;
+    controls.maxDistance = 78;
+    // Unrestricted 360° horizontal azimuth & wide vertical polar range for full Infinity Castle viewing
+    controls.minAzimuthAngle = -Infinity;
+    controls.maxAzimuthAngle = Infinity;
+    controls.minPolarAngle = 0.04;
+    controls.maxPolarAngle = Math.PI - 0.04;
     controls.autoRotate = !isSoftwareGl;
     controls.autoRotateSpeed = 0.55;
     controls.update();
@@ -458,19 +475,27 @@ export default function App() {
       renderer.compile(scene, camera);
     }
 
-    // Raycasting on Layer 1 (Orbit Mode) & Pointer Drag Look (Walking POV Mode)
+    // Raycasting on Layer 1 (Orbit Mode) & 360° Pointer Drag Look (Walking POV Mode)
     const raycaster = new THREE.Raycaster();
     raycaster.layers.set(1);
     let lastRaycastTime = 0;
     let pointerDownPos = { x: 0, y: 0 };
     let lastDragPos = { x: 0, y: 0 };
     let isDraggingLook = false;
+    let activePointerId: number | null = null;
 
     const handlePointerDown = (e: PointerEvent) => {
       pointerDownPos = { x: e.clientX, y: e.clientY };
       lastDragPos = { x: e.clientX, y: e.clientY };
       if (stateRef.current.cameraMode === 'pov') {
         isDraggingLook = true;
+        activePointerId = e.pointerId;
+        setPovDrawerOpen(false);
+        try {
+          renderer.domElement.setPointerCapture(e.pointerId);
+        } catch {
+          // Ignore if synthetic pointer event
+        }
         renderer.domElement.style.cursor = 'grabbing';
       }
     };
@@ -481,8 +506,9 @@ export default function App() {
           const dx = e.clientX - lastDragPos.x;
           const dy = e.clientY - lastDragPos.y;
           lastDragPos = { x: e.clientX, y: e.clientY };
-          stateRef.current.lookDragDelta.yaw += dx * 0.0042;
-          stateRef.current.lookDragDelta.pitch += dy * 0.0038;
+          // 0.0085 rad/px allows a single comfortable drag across the screen to rotate a full 360°+
+          stateRef.current.lookDragDelta.yaw += dx * 0.0085;
+          stateRef.current.lookDragDelta.pitch += dy * 0.0055;
         }
         return;
       }
@@ -521,6 +547,14 @@ export default function App() {
 
     const handlePointerUp = (e: PointerEvent) => {
       if (stateRef.current.cameraMode === 'pov') {
+        if (activePointerId !== null) {
+          try {
+            renderer.domElement.releasePointerCapture(activePointerId);
+          } catch {
+            // Ignore
+          }
+          activePointerId = null;
+        }
         isDraggingLook = false;
         renderer.domElement.style.cursor = 'grab';
         return;
@@ -544,7 +578,7 @@ export default function App() {
     };
 
     const domElem = renderer.domElement;
-    domElem.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointermove', handlePointerMove);
     domElem.addEventListener('pointerdown', handlePointerDown);
     window.addEventListener('pointerup', handlePointerUp);
 
@@ -697,39 +731,49 @@ export default function App() {
       if (st.cameraMode === 'pov') {
         controls.enabled = false;
 
+        const keys = st.heldKeys;
+        const keyFwd =
+          (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) -
+          (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
+        const keyRight = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
+        const keyTurn =
+          (keys.has('KeyE') || keys.has('ArrowRight') ? 1 : 0) -
+          (keys.has('KeyQ') || keys.has('ArrowLeft') ? 1 : 0);
+        const combinedTurn = Math.max(-1, Math.min(1, keyTurn + st.virtualInput.turnYaw));
+        const sprint = keys.has('ShiftLeft') || keys.has('ShiftRight');
+
         if (st.autoWalkPov) {
           // Smooth Guided First-Person Auto-Walk Tour along Yokocho & Infinity Bridges
+          // Supports full 360° free look via Mouse Drag, Q/E, ArrowLeft/Right, or on-screen ↺/↻ buttons!
           st.autoWalkProgress = (st.autoWalkProgress + delta * 0.022) % 1;
           const sample = sampleLoopPath(AUTO_WALK_WAYPOINTS, st.autoWalkProgress, 0.08);
           const bob = Math.sin(elapsed * 7.2) * 0.034;
           st.povState.x = sample.x;
           st.povState.z = sample.z;
           st.povState.eyeY = 1.0 + bob;
-          // sampleLoopPath rotationY is atan2(dx, dz), convert to Three.js camera -Z forward yaw
+
+          st.autoWalkYawOffset += combinedTurn * 2.2 * delta + st.lookDragDelta.yaw;
+          st.autoWalkPitchOffset = Math.max(
+            -1.15,
+            Math.min(1.15, st.autoWalkPitchOffset + st.lookDragDelta.pitch),
+          );
+          st.lookDragDelta.yaw = 0;
+          st.lookDragDelta.pitch = 0;
+
           const desiredYaw = Math.PI - sample.rotationY;
-          st.povState.yaw = desiredYaw - st.lookDragDelta.yaw;
+          st.povState.yaw = desiredYaw - st.autoWalkYawOffset;
           st.povState.pitch = Math.max(
-            -1.1,
-            Math.min(1.1, 0.12 + Math.sin(elapsed * 0.45) * 0.14 - st.lookDragDelta.pitch),
+            -1.22,
+            Math.min(1.22, 0.14 + Math.sin(elapsed * 0.45) * 0.12 - st.autoWalkPitchOffset),
           );
         } else {
-          // Manual First-Person Walking POV (WASD / Arrow Keys / On-Screen D-Pad)
-          const keys = st.heldKeys;
-          const keyFwd =
-            (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) -
-            (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
-          const keyRight = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
-          const keyTurn =
-            (keys.has('KeyE') || keys.has('ArrowRight') ? 1 : 0) -
-            (keys.has('KeyQ') || keys.has('ArrowLeft') ? 1 : 0);
-          const sprint = keys.has('ShiftLeft') || keys.has('ShiftRight');
-
+          // Manual First-Person Walking POV (WASD / Arrow Keys / On-Screen D-Pad + 360° Drag/Turn)
           st.povState = stepWalkthroughPov(
             st.povState,
             {
               forward: Math.max(-1, Math.min(1, keyFwd + st.virtualInput.forward)),
               right: Math.max(-1, Math.min(1, keyRight + st.virtualInput.right)),
-              turnYaw: Math.max(-1, Math.min(1, keyTurn + st.virtualInput.turnYaw)),
+              turnYaw: combinedTurn,
               lookYawDelta: st.lookDragDelta.yaw,
               lookPitchDelta: st.lookDragDelta.pitch,
               sprint,
@@ -746,6 +790,7 @@ export default function App() {
         camera.rotation.x = st.povState.pitch;
         camera.rotation.z = 0;
       } else {
+        camera.rotation.order = 'XYZ';
         controls.enabled = true;
         st.lookDragDelta.yaw = 0;
         st.lookDragDelta.pitch = 0;
@@ -793,7 +838,7 @@ export default function App() {
       cancelAnimationFrame(frameId);
       clearTimeout(frameId);
       window.removeEventListener('resize', handleResize);
-      domElem.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointermove', handlePointerMove);
       domElem.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('pointerup', handlePointerUp);
       controls.removeEventListener('start', onControlStart);
@@ -814,12 +859,22 @@ export default function App() {
   ];
 
   const setVirtualHold = (axis: 'forward' | 'right' | 'turnYaw', value: number) => {
-    if (value !== 0 && stateRef.current.autoWalkPov) {
+    if (value !== 0) {
+      setPovDrawerOpen(false);
+    }
+    if (axis === 'turnYaw' && value !== 0) {
+      // Immediate 20° turn impulse on tap + smooth continuous 360° turn while held
+      stateRef.current.lookDragDelta.yaw += value * 0.35;
+    }
+    if (value !== 0 && axis !== 'turnYaw' && stateRef.current.autoWalkPov) {
       setAutoWalkPov(false);
       stateRef.current.autoWalkPov = false;
     }
     stateRef.current.virtualInput[axis] = value;
   };
+
+  const activePovPreset =
+    POV_SPAWN_PRESETS.find((p) => p.id === activePovPresetId) ?? POV_SPAWN_PRESETS[0];
 
   return (
     <div
@@ -1013,88 +1068,43 @@ export default function App() {
         </aside>
       )}
 
-      {/* First-Person Walking POV Navigator Card (Top-Left when in POV Mode) */}
+      {/* Non-Blocking Slim First-Person Walking POV Bar + Auto-Closing District Drawer */}
       {cameraMode === 'pov' && (
         <aside
           aria-label="First-Person Walking POV Controls"
-          className="fixed top-20 left-6 z-20 w-[356px] max-w-[calc(100vw-3rem)] rounded-2xl p-4 bg-white/95 dark:bg-slate-900/95 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800 shadow-xl space-y-3"
+          className="fixed top-16 left-4 z-20 flex flex-col items-start gap-2 pointer-events-none max-w-[calc(100vw-2rem)]"
         >
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <div className="text-xs font-semibold text-amber-600 dark:text-amber-400">
-                FIRST-PERSON WALKTHROUGH POV
-              </div>
-              <h2 className="text-base font-bold font-display">
-                Street &amp; Infinity Bridge Explorer
-              </h2>
-            </div>
+          {/* Single-Line Non-Blocking Compact Pill Bar */}
+          <div className="pointer-events-auto flex flex-wrap items-center gap-1.5 px-2.5 py-1.5 rounded-2xl bg-slate-900/85 text-slate-100 backdrop-blur-md border border-slate-700/80 shadow-lg">
+            {/* Collapsible District Teleport Menu Toggle */}
             <button
               type="button"
-              onClick={() => toggleWalkingPovMode('orbit')}
-              aria-label="Exit Walking POV Mode"
-              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              onClick={() => setPovDrawerOpen((prev) => !prev)}
+              aria-expanded={povDrawerOpen}
+              className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold transition-colors whitespace-nowrap"
+              title="Jump to Themed Yokocho District (Shortcut: M)"
             >
-              <X className="w-4 h-4" />
+              <span
+                className="w-2.5 h-2.5 rounded-full shrink-0"
+                style={{ backgroundColor: activePovPreset.accentHex }}
+              />
+              <span>{activePovPreset.label}</span>
+              {povDrawerOpen ? (
+                <ChevronUp className="w-3.5 h-3.5 text-amber-400" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 text-amber-400" />
+              )}
             </button>
-          </div>
 
-          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-            Use <span className="font-mono font-semibold">WASD</span> /{' '}
-            <span className="font-mono font-semibold">Arrows</span> to walk,{' '}
-            <span className="font-mono font-semibold">Drag Canvas</span> or{' '}
-            <span className="font-mono font-semibold">Q/E</span> to look up at inverted Mugenjo
-            castles, or use the pad below.
-          </p>
-
-          {/* Teleport Vantage Spots across the 5 Themed Yokocho Districts */}
-          <div className="space-y-1.5">
-            <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-              Jump to Themed Yokocho District
-            </div>
-            <div className="grid grid-cols-1 gap-1.5">
-              {POV_SPAWN_PRESETS.map((preset) => {
-                const isCurr = activePovPresetId === preset.id && !autoWalkPov;
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => teleportPov(preset)}
-                    className={`flex items-center justify-between gap-3 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
-                      isCurr
-                        ? 'bg-amber-400 text-slate-950 font-semibold'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <span
-                        className="w-2.5 h-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: preset.accentHex }}
-                      />
-                      <span>{preset.label}</span>
-                    </span>
-                    <span
-                      className={`text-[10px] ${
-                        isCurr ? 'text-slate-900' : 'text-slate-500 dark:text-slate-400'
-                      }`}
-                    >
-                      {preset.themeBadge}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* On-Screen Walk D-Pad + Auto-Walk Toggle */}
-          <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
-            <div className="grid grid-cols-3 gap-1 w-32">
+            {/* Inline Compact 360° Walk & Turn Buttons (Zero Screen Occlusion) */}
+            <div className="flex items-center gap-1 px-1 border-l border-r border-slate-700/80">
               <button
                 type="button"
                 onPointerDown={() => setVirtualHold('turnYaw', -1)}
                 onPointerUp={() => setVirtualHold('turnYaw', 0)}
                 onPointerLeave={() => setVirtualHold('turnYaw', 0)}
-                className="px-2 py-1.5 text-[11px] font-mono font-semibold rounded bg-slate-100 dark:bg-slate-800 hover:bg-amber-400 hover:text-slate-950 transition-colors"
-                title="Turn Left (Q)"
+                className="px-2 py-1 text-[11px] font-mono font-semibold rounded-lg bg-slate-800 hover:bg-amber-400 hover:text-slate-950 transition-colors"
+                title="Rotate 360° Left (Q / Left Arrow / Drag Canvas)"
               >
                 ↺ Q
               </button>
@@ -1103,77 +1113,120 @@ export default function App() {
                 onPointerDown={() => setVirtualHold('forward', 1)}
                 onPointerUp={() => setVirtualHold('forward', 0)}
                 onPointerLeave={() => setVirtualHold('forward', 0)}
-                className="px-2 py-1.5 text-[11px] font-mono font-bold rounded bg-amber-400 text-slate-950 hover:bg-amber-300 transition-colors"
-                title="Walk Forward (W)"
+                className="px-2 py-1 text-[11px] font-mono font-bold rounded-lg bg-amber-400 text-slate-950 hover:bg-amber-300 transition-colors"
+                title="Walk Forward (W / Up Arrow)"
               >
                 ▲ W
-              </button>
-              <button
-                type="button"
-                onPointerDown={() => setVirtualHold('turnYaw', 1)}
-                onPointerUp={() => setVirtualHold('turnYaw', 0)}
-                onPointerLeave={() => setVirtualHold('turnYaw', 0)}
-                className="px-2 py-1.5 text-[11px] font-mono font-semibold rounded bg-slate-100 dark:bg-slate-800 hover:bg-amber-400 hover:text-slate-950 transition-colors"
-                title="Turn Right (E)"
-              >
-                E ↻
-              </button>
-              <button
-                type="button"
-                onPointerDown={() => setVirtualHold('right', -1)}
-                onPointerUp={() => setVirtualHold('right', 0)}
-                onPointerLeave={() => setVirtualHold('right', 0)}
-                className="px-2 py-1.5 text-[11px] font-mono font-semibold rounded bg-slate-100 dark:bg-slate-800 hover:bg-amber-400 hover:text-slate-950 transition-colors"
-                title="Strafe Left (A)"
-              >
-                ◀ A
               </button>
               <button
                 type="button"
                 onPointerDown={() => setVirtualHold('forward', -1)}
                 onPointerUp={() => setVirtualHold('forward', 0)}
                 onPointerLeave={() => setVirtualHold('forward', 0)}
-                className="px-2 py-1.5 text-[11px] font-mono font-semibold rounded bg-slate-100 dark:bg-slate-800 hover:bg-amber-400 hover:text-slate-950 transition-colors"
-                title="Walk Backward (S)"
+                className="px-2 py-1 text-[11px] font-mono font-semibold rounded-lg bg-slate-800 hover:bg-amber-400 hover:text-slate-950 transition-colors"
+                title="Walk Backward (S / Down Arrow)"
               >
                 ▼ S
               </button>
               <button
                 type="button"
-                onPointerDown={() => setVirtualHold('right', 1)}
-                onPointerUp={() => setVirtualHold('right', 0)}
-                onPointerLeave={() => setVirtualHold('right', 0)}
-                className="px-2 py-1.5 text-[11px] font-mono font-semibold rounded bg-slate-100 dark:bg-slate-800 hover:bg-amber-400 hover:text-slate-950 transition-colors"
-                title="Strafe Right (D)"
+                onPointerDown={() => setVirtualHold('turnYaw', 1)}
+                onPointerUp={() => setVirtualHold('turnYaw', 0)}
+                onPointerLeave={() => setVirtualHold('turnYaw', 0)}
+                className="px-2 py-1 text-[11px] font-mono font-semibold rounded-lg bg-slate-800 hover:bg-amber-400 hover:text-slate-950 transition-colors"
+                title="Rotate 360° Right (E / Right Arrow / Drag Canvas)"
               >
-                D ▶
+                E ↻
               </button>
             </div>
 
-            <div className="flex flex-col gap-1.5 flex-1">
-              <button
-                type="button"
-                onClick={() => setAutoWalkPov((prev) => !prev)}
-                className={`flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl transition-colors whitespace-nowrap ${
-                  autoWalkPov
-                    ? 'bg-amber-400 text-slate-950'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
-              >
-                {autoWalkPov ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                <span>{autoWalkPov ? 'Auto-Walk: On' : 'Auto-Walk Tour'}</span>
-              </button>
+            {/* Auto-Walk Quick Toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                setPovDrawerOpen(false);
+                setAutoWalkPov((prev) => !prev);
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-xl transition-colors whitespace-nowrap ${
+                autoWalkPov
+                  ? 'bg-amber-400 text-slate-950'
+                  : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+              }`}
+            >
+              {autoWalkPov ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+              <span>{autoWalkPov ? 'Auto-Walk: On' : 'Auto-Walk'}</span>
+            </button>
 
-              <button
-                type="button"
-                onClick={() => toggleWalkingPovMode('orbit')}
-                className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors whitespace-nowrap"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Return to Orbit</span>
-              </button>
-            </div>
+            {/* Return to Orbit */}
+            <button
+              type="button"
+              onClick={() => toggleWalkingPovMode('orbit')}
+              aria-label="Exit Walking POV Mode"
+              className="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition-colors whitespace-nowrap"
+              title="Return to 360° Orbit View (V)"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Orbit</span>
+            </button>
           </div>
+
+          {/* Subtle Non-Blocking Micro Hint */}
+          <div className="px-2.5 py-0.5 rounded-full bg-slate-950/60 text-[11px] text-slate-300 backdrop-blur-sm">
+            Drag anywhere on canvas or press <span className="font-mono text-amber-300">Q / E</span>{' '}
+            to rotate 360° · <span className="font-mono text-amber-300">WASD</span> to walk ·{' '}
+            <span className="font-mono text-amber-300">M</span> districts
+          </div>
+
+          {/* Collapsible District Teleport Popover (Only open when clicked, auto-closes when walking) */}
+          {povDrawerOpen && (
+            <div className="pointer-events-auto w-80 max-w-[calc(100vw-2rem)] rounded-2xl p-3 bg-slate-900/95 text-slate-100 border border-slate-700/90 shadow-2xl space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-400">
+                  Jump to Themed Yokocho District
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPovDrawerOpen(false)}
+                  aria-label="Minimize district menu"
+                  className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="grid grid-cols-1 gap-1.5">
+                {POV_SPAWN_PRESETS.map((preset) => {
+                  const isCurr = activePovPresetId === preset.id && !autoWalkPov;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => teleportPov(preset)}
+                      className={`flex items-center justify-between gap-3 px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
+                        isCurr
+                          ? 'bg-amber-400 text-slate-950 font-semibold'
+                          : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: preset.accentHex }}
+                        />
+                        <span>{preset.label}</span>
+                      </span>
+                      <span
+                        className={`text-[10px] ${
+                          isCurr ? 'text-slate-900' : 'text-slate-400'
+                        }`}
+                      >
+                        {preset.themeBadge}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </aside>
       )}
 
