@@ -1,0 +1,6 @@
+{
+  "name": "Hotaru Yokocho — 3D Kawaii Tokyo Miniature Diorama",
+  "description": "An interactive, hand-painted low-poly 3D miniature Tokyo street block diorama built with Vite and Three.js, featuring 3 procedural texture atlases, inverted-hull outlines, day/night atmosphere switching, and building inspection.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
